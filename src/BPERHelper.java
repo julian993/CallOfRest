@@ -79,8 +79,8 @@ public class BPERHelper {
         Result result = this.getAllTickets();
         System.out.println("Letti " + result.total + " ticket");
         for (Ticket t : result.results) {
-            System.out.println("ID: " + t.ID + ", TicketStatusID: " + t.TicketStatusID + ", Date: " + t.Date + ", Att.N." +
-                    (t.Attachments != null ? t.Attachments.size() : "0"));
+//            System.out.println("ID: " + t.ID + ", TicketStatusID: " + t.TicketStatusID + ", Date: " + t.Date + ", Att.N." + (t.Attachments != null ? t.Attachments.size() : "0"));
+            System.out.println(t.Problem);
         }
     }
 
@@ -161,114 +161,105 @@ public class BPERHelper {
     }
 
     public void writeTicketOnCedacri(String status) {
+        logger.info("Lettura ticket con status: " + status);
         ArrayList<Ticket> tickets = this.getTicketsByStatus(status);
         if (tickets == null) return;
-        //scrittura su REM-OASI-Dispatcher-IN
-        write_REM_OASI_Dispatcher_IN(tickets);
-
-
-        //scrittura su REM-OASI-Attachment-IN
-        write_REM_OASI_Attachment_IN(tickets);
-
-    }
-
-    private boolean write_REM_OASI_Dispatcher_IN(ArrayList<Ticket> tickets) {
-        String entryIdOut = "";
-        String form = "REM-OASI-Dispatcher-IN";
         int count = 0;
         for (Ticket t : tickets) {
-            try {
-                Entry entry = new Entry();
-                entry.put(536870913, new Value(t.ID));
-                entry.put(536870977, new Value(t.RemoteID));
-                entry.put(536870929, new Value(t.TicketCode));
-                entry.put(536870915, new Value(t.TicketStatusID));
-                entry.put(536870950, new Value(t.TicketTypeID));
-                entry.put(8, new Value(t.Subject));
-                entry.put(536870923, new Value(t.Problem));
-                entry.put(536870958, new Value(t.TicketPriorityID));
-                entry.put(536870963, new Value(t.Solution));
-                entry.put(536870933, new Value(t.AssignedUserGroupID));
-                entry.put(536870916, new Value(t.AssignedUserID));
-                entry.put(536870960, new Value(this.StringToTimestamp(t.Date)));
-                if (t.TicketStatusID.equals("S3"))
-                    entry.put(536870962, new Value(this.StringToTimestamp(t.ClosureDate)));
-                entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
-                logger.info("Ticket scritto su REM-OASI-Dispatcher-IN = " + t.ID);
+            //scrittura su REM-OASI-Dispatcher-IN
+            if (write_REM_OASI_Dispatcher_IN(t)) {
                 count++;
-            } catch (ARException e) {
-                logger.warning("Ticket " + t.ID + ": write_REM_OASI_Dispatcher_IN " + e.getMessage() + ": entryIdOut=" + entryIdOut);
             }
         }
         logger.info("Ticket Scritti: " + count);
+    }
+
+    private boolean write_REM_OASI_Dispatcher_IN(Ticket ticket) {
+        String entryIdOut = "";
+        String form = "REM-OASI-Dispatcher-IN";
+        try {
+            Entry entry = new Entry();
+            entry.put(536870913, new Value(ticket.ID));
+            entry.put(536870977, new Value(ticket.RemoteID));
+            entry.put(536870929, new Value(ticket.TicketCode));
+            entry.put(536870915, new Value(ticket.TicketStatusID));
+            entry.put(536870950, new Value(ticket.TicketTypeID));
+            entry.put(8, new Value(ticket.Subject));
+            entry.put(536870923, new Value(ticket.Problem));
+            entry.put(536870958, new Value(ticket.TicketPriorityID));
+            entry.put(536870963, new Value(ticket.Solution));
+            entry.put(536870933, new Value(ticket.AssignedUserGroupID));
+            entry.put(536870916, new Value(ticket.AssignedUserID));
+            entry.put(536870960, new Value(this.StringToTimestamp(ticket.Date)));
+            if (ticket.TicketStatusID.equals("S3"))
+                entry.put(536870962, new Value(this.StringToTimestamp(ticket.ClosureDate)));
+            String testo = ticket.Problem;
+
+            String Categoria_Descrizione = testo.substring(testo.lastIndexOf("Categoria_Descrizione") + "Categoria_Descrizione".length() + 2, testo.indexOf("\n", testo.indexOf("Categoria_Descrizione")));
+            String Categoria_Hierarchy = testo.substring(testo.lastIndexOf("Categoria_Hierarchy") + "Categoria_Hierarchy".length() + 2, testo.indexOf("\n", testo.indexOf("Categoria_Hierarchy")));
+            String Richiedente_Nominativo = testo.substring(testo.lastIndexOf("Richiedente_Nominativo") + "Richiedente_Nominativo".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Nominativo")));
+            String Richiedente_FIL_UFF = testo.substring(testo.lastIndexOf("Richiedente_FIL-UFF") + "Richiedente_FIL-UFF".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_FIL-UFF")));
+            String Richiedente_Indirizzo = testo.substring(testo.lastIndexOf("Richiedente_Indirizzo") + "Richiedente_Indirizzo".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Indirizzo")));
+            String Richiedente_Telefono = testo.substring(testo.lastIndexOf("Richiedente_Telefono") + "Richiedente_Telefono".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Telefono")));
+            String Richiedente_Mail = testo.substring(testo.lastIndexOf("Richiedente_Mail") + "Richiedente_Mail".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Mail")));
+            String Richiedente_Citta = testo.substring(testo.lastIndexOf("Richiedente_Citta") + "Richiedente_Citta".length() + 2);
+            entry.put(536870941, new Value(Categoria_Descrizione));
+            entry.put(536870957, new Value(Categoria_Hierarchy));
+            entry.put(536870947, new Value(Richiedente_Nominativo));
+            entry.put(536870964, new Value(Richiedente_FIL_UFF));
+            entry.put(536870930, new Value(Richiedente_Indirizzo));
+            entry.put(536870942, new Value(Richiedente_Telefono));
+            entry.put(536870943, new Value(Richiedente_Mail));
+            entry.put(536870988, new Value(Richiedente_Citta));
+            entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
+            logger.info("Ticket scritto su REM-OASI-Dispatcher-IN = " + ticket.ID);
+            write_REM_OASI_Attachment_IN(ticket);
+            //se il ticket è in assigned allora lo metto in S2 (in charge)
+            if (ticket.TicketStatusID.equals("S1")) this.changeStatus(ticket.ID, "S2", "Ticket preso in carico", "");
+        } catch (Exception e) {
+            logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN " + e.getMessage() + ": entryIdOut=" + entryIdOut);
+            return false;
+        }
         return true;
     }
 
-    private boolean write_REM_OASI_Attachment_IN(ArrayList<Ticket> tickets) {
+    private boolean write_REM_OASI_Attachment_IN(Ticket ticket) {
+        ArrayList<Attachment> attachments = ticket.Attachments;
+        if (attachments == null) return true;
+        if (attachments.size() < 1) return true;
         String entryIdOut = "";
         String form = "REM-OASI-Attachment-IN";
-        for (Ticket t : tickets) {//scorro i ticket
-            int count_attch = 0;
-            try {
-                Entry entry = new Entry();
-                entry.put(536870919, new Value(t.ID));//id ticket
-                ArrayList<Attachment> attachments = t.Attachments;
-                for (Attachment a : attachments) {//carico tutti gli allegati
-                    entry.put(536870977, new Value(a.ID));//id attachment
-                    AttachmentValue attachmentValue = new AttachmentValue(a.FileName, Base64.getDecoder().decode(a.Data));
-                    entry.put(536880912, new Value(attachmentValue));
-                    entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
-                    count_attch++;
-                }
-                logger.info("Ticket " + t.ID + " --> "+ count_attch + " attachements caricati");
-            } catch (ARException e) {
-                logger.warning("Ticket " + t.ID + ": write_REM_OASI_Attachment_IN " + e.getMessage() + ": entryIdOut=" + entryIdOut);
+        int count_attch = 0;
+        try {
+            Entry entry = new Entry();
+            entry.put(536870919, new Value(ticket.ID));//id ticket
+            for (Attachment a : attachments) {//carico tutti gli allegati
+                entry.put(536870977, new Value(a.ID));//id attachment
+                AttachmentValue attachmentValue = new AttachmentValue(a.FileName, Base64.getDecoder().decode(a.Data));
+                entry.put(536880912, new Value(attachmentValue));
+                entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
+                count_attch++;
             }
+            logger.info("Ticket " + ticket.ID + " --> " + count_attch + " attachements caricati");
+        } catch (Exception e) {
+            logger.warning("Ticket " + ticket.ID + ": write_REM_OASI_Attachment_IN " + e.getMessage() + ": entryIdOut=" + entryIdOut);
         }
         return true;
     }
 
-    public void getAttachments_from_REM_OASI_Attachment_IN() {
-        String schemaName = "REM-OASI-Attachment-IN";
-        List<EntryListInfo> eListInfos = null;
-        String query = "'TicketID BPER'=\"921C\"";
-        try {
-            QualifierInfo qual = context.parseQualification(schemaName, query);
-            eListInfos = context.getListEntry(schemaName, qual, 0, 4000, null, null, false, null);
-        } catch (ARException e) {
-            logger.warning("getAttachments_from_REM_OASI_Attachment_IN: " + e.getMessage());
-            return;
-        }
-        AttachmentValue attachmentValue;
-        for (EntryListInfo eListInfo : eListInfos) {
-            Entry record;
-            try {
-                record = context.getEntry(schemaName, eListInfo.getEntryID(), null);
-                attachmentValue = (AttachmentValue) record.get(536880912).getValue();
-                System.out.println("Disp_ID: " + attachmentValue.toString());
-
-
-            } catch (ARException e) {
-                logger.warning("getAttachments_from_REM_OASI_Attachment_IN: " + e.getMessage());
-            }
-
-        }
-
-
-    }
 
     public Ticket getTicketById(String id) {
         try {
             URL url = new URL(BPERSERVER + "/API/CC/Tickets/" + id + "?requestToken=" + TOKEN);
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
             String inputLine;
             StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null) {
+            while ((inputLine = br.readLine()) != null) {
                 content.append(inputLine);
             }
-            in.close();
+            br.close();
             Gson gson = new Gson();
             Ticket result = gson.fromJson(content.toString(), Ticket.class);
             return result;
@@ -282,33 +273,33 @@ public class BPERHelper {
         try {
             URL url = new URL(BPERSERVER + "/API/CC/Tickets/" + ticketID + "/ChangeStatus?requestToken=" + TOKEN);
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("POST");
+            con.setRequestMethod("GET");
             con.setRequestProperty("Content-Type", "application/json; utf-8");
             con.setRequestProperty("Accept", "application/json");
             con.setDoOutput(true);
             String jsonInputString = "{\"TicketStatusID\": \"" + TicketStatusID + "\",\"Comment\":\"" + Comment + "\"," +
                     "\"Solution\": \"" + Solution + "\"}";
+
             try (OutputStream os = con.getOutputStream()) {
                 byte[] input = jsonInputString.getBytes("utf-8");
                 os.write(input, 0, input.length);
                 os.flush();
             }
 
-
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), "utf-8"))) {
                 StringBuilder response = new StringBuilder();
-                String responseLine = null;
+                String responseLine = "";
                 while ((responseLine = br.readLine()) != null) {
                     response.append(responseLine.trim());
                 }
-                br.close();
-                logger.info("changeStatus response: " + response.toString());
+                System.out.println(response.toString());
+                logger.info("Cambio stato di " + ticketID + " in " + TicketStatusID + ", response code: " + con.getResponseMessage() + response.toString());
             }
+
         } catch (IOException e) {
             logger.warning("Errore changeStatus: " + e.getMessage());
         }
     }
-
 
     public Attachment getAttachmentByID(String id) {
         try {
@@ -349,27 +340,27 @@ public class BPERHelper {
 
 
     class Result {
-        private ArrayList<Ticket> results;
-        private int total;
-        private ArrayList<Link> _links;
+        ArrayList<Ticket> results;
+        int total;
+        ArrayList<Link> _links;
     }
 
     class Ticket {
-        private ArrayList<Attachment> Attachments;
-        private String ID;
-        private String RemoteID;
-        private String TicketCode;
-        private String TicketStatusID;
-        private String TicketTypeID;
-        private String TicketPriorityID;
-        private String Subject;
-        private String Problem;
-        private String Solution;
-        private String AssignedUserGroupID;
-        private String AssignedUserID;
-        private String Date;
-        private String ClosureDate;
-        private ArrayList<Link> _links;
+        ArrayList<Attachment> Attachments;
+        String ID;
+        String RemoteID;
+        String TicketCode;
+        String TicketStatusID;
+        String TicketTypeID;
+        String TicketPriorityID;
+        String Subject;
+        String Problem;
+        String Solution;
+        String AssignedUserGroupID;
+        String AssignedUserID;
+        String Date;
+        String ClosureDate;
+        ArrayList<Link> _links;
 
         public void setAttachments(ArrayList<Attachment> attachments) {
             Attachments = attachments;
@@ -377,23 +368,27 @@ public class BPERHelper {
     }
 
     class Link {
-        private String method;
-        private String rel;
-        private String href;
+        String method;
+        String rel;
+        String href;
     }
 
     class Attachment {
-        private String ID;
-        private String RemoteID;
-        private String FileName;
-        private String ContentType;
-        private String Description;
-        private String Data;
-        private ArrayList _links;
+        String ID;
+        String RemoteID;
+        String FileName;
+        String ContentType;
+        String Description;
+        String Data;
+        ArrayList _links;
+    }
 
+    public void error_InputCommnad(String s){
+        logger.warning("Errori nei comandi in input: " + s);
     }
 
     public void endgame() {
+        logger.info("END");
         context.logout();
         try {
             inputStream.close();

@@ -211,8 +211,11 @@ public class BPERHelper {
             entry.put(536870942, new Value(Richiedente_Telefono));
             entry.put(536870943, new Value(Richiedente_Mail));
             entry.put(536870988, new Value(Richiedente_Citta));
+            entry.put(536870980, new Value("CREATE"));//campo azione che fa partire l'esito
+
             entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
-            logger.info("Ticket scritto su REM-OASI-Dispatcher-IN = " + ticket.ID);
+            logger.info("Ticket " + ticket.ID + " scritto su REM-OASI-Dispatcher-IN");
+            //carico gli allegati se ci sono
             write_REM_OASI_Attachment_IN(ticket);
             //se il ticket è in assigned allora lo metto in S2 (in charge)
             if (ticket.TicketStatusID.equals("S1")) this.changeStatus(ticket.ID, "S2", "Ticket preso in carico", "");
@@ -237,6 +240,7 @@ public class BPERHelper {
                 entry.put(536870977, new Value(a.ID));//id attachment
                 AttachmentValue attachmentValue = new AttachmentValue(a.FileName, Base64.getDecoder().decode(a.Data));
                 entry.put(536880912, new Value(attachmentValue));
+
                 entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
                 count_attch++;
             }
@@ -293,7 +297,7 @@ public class BPERHelper {
                     response.append(responseLine.trim());
                 }
                 System.out.println(response.toString());
-                logger.info("Cambio stato di " + ticketID + " in " + TicketStatusID + ", response code: " + con.getResponseMessage() + response.toString());
+                logger.info("Ticket " + ticketID + " cambio stato in " + TicketStatusID + ", response code: " + con.getResponseMessage() + response.toString());
             }
 
         } catch (IOException e) {
@@ -383,7 +387,7 @@ public class BPERHelper {
         ArrayList _links;
     }
 
-    public void error_InputCommnad(String s){
+    public void error_InputCommnad(String s) {
         logger.warning("Errori nei comandi in input: " + s);
     }
 

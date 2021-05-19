@@ -4,8 +4,9 @@ import com.google.gson.JsonParser;
 
 import java.io.*;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -19,6 +20,8 @@ public class BPERHelper {
     private static BPERHelper bperHelper = null;
     private static String TOKEN = "";
     private static String BPERSERVER = "";
+    private static String PROXY_SERVER = "";
+    private static int PROXY_PORT;
     private static ARServerUser context;//variabile per le operazioni sul server, lettura e scrittura
     private static FileInputStream inputStream;
     private final static Logger logger = Logger.getLogger(BPERHelper.class.getName());//scrittura su MyLog.log
@@ -54,56 +57,56 @@ public class BPERHelper {
         context = new ARServerUser(ARSUser, ARSPassword, "", "", ARSServer, Integer.parseInt(properties.getProperty("ARSPort")));
         logger.info("********************************START*******************************************************");
         logger.info("ConnectionServer: " + context.getServer());
+
+        PROXY_SERVER = properties.getProperty("PROXY_SERVER");
+        PROXY_PORT = Integer.parseInt(properties.getProperty("PROXY_PORT"));
+
+        String content = this.getJsonString(BPERSERVER + "/WSC/Login?username=" + BPERUser + "&password=" + BPERPassword, "Connessione a BPER");
+        if (content.equals("")) return false;
+        logger.info(content);
+        JsonObject jsonObject = JsonParser.parseString(content).getAsJsonObject();
+        TOKEN = jsonObject.get("requestToken").getAsString();
+        return true;
+    }
+
+    private String getJsonString(String URL, String optional) {
         try {
-            URL url = new URL(BPERSERVER + "/WSC/Login?username=" + BPERUser + "&password=" + BPERPassword);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            URL url = new URL(URL);
+            HttpURLConnection con;
+            //Esiste il proxy?
+            if (!PROXY_SERVER.equals("")) {
+                Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_SERVER, PROXY_PORT));
+                con = (HttpURLConnection) url.openConnection(proxy);
+            } else
+                con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
             String inputLine;
             StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null)
+            while ((inputLine = br.readLine()) != null)
                 content.append(inputLine);
-            System.out.println(content.toString());
-            in.close();
-            JsonObject jsonObject = JsonParser.parseString(content.toString()).getAsJsonObject();
-            TOKEN = jsonObject.get("requestToken").getAsString();
+            br.close();
+            return String.valueOf(content);
         } catch (IOException e) {
-            logger.warning("Errore TOKEN di autenticazione: " + e.getMessage());
-            return false;
+            logger.warning("Errore in " + optional + ": " + e.getMessage());
         }
-        logger.info("TOKEN = " + TOKEN);
-        return true;
+        return "";
     }
 
     public void printAllTicket() {
         Result result = this.getAllTickets();
         System.out.println("Letti " + result.total + " ticket");
         for (Ticket t : result.results) {
-//            System.out.println("ID: " + t.ID + ", TicketStatusID: " + t.TicketStatusID + ", Date: " + t.Date + ", Att.N." + (t.Attachments != null ? t.Attachments.size() : "0"));
-            System.out.println(t.Problem);
+            System.out.println("ID: " + t.ID + ", TicketStatusID: " + t.TicketStatusID + ", Date: " + t.Date + ", Att.N." + (t.Attachments != null ? t.Attachments.size() : "0"));
+//            System.out.println(t.Problem);
         }
     }
 
-
     public Result getAllTickets() {
-        try {
-            URL url = new URL(BPERSERVER + "/API/CC/Tickets?requestToken=" + TOKEN);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-            String inputLine;
-            StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
-            }
-            in.close();
-            Gson gson = new Gson();
-            Result result = gson.fromJson(content.toString(), Result.class);
-            return result;
-        } catch (IOException e) {
-            logger.warning("Errore getAllTickets: " + e.getMessage());
-            return null;
-        }
+        Gson gson = new Gson();
+        String content = this.getJsonString(BPERSERVER + "/API/CC/Tickets?requestToken=" + TOKEN, "getAllTickets");
+        if (content.equals("")) return null;
+        return gson.fromJson(content, Result.class);
     }
 
 
@@ -120,25 +123,12 @@ public class BPERHelper {
      */
     private ArrayList<Ticket> getTicketsByStatus(String status) {
         Result tickets;
-        try {
-            URL url = new URL(BPERSERVER + "/API/CC/Tickets?requestToken=" + TOKEN + "&filter=[{\"property\":\"TicketStatusID\",\"op\":\"eq\",\"value\":\"" + status + "\"}]");
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-            String inputLine;
-            StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
-            }
-            in.close();
-            Gson gson = new Gson();
-            tickets = gson.fromJson(content.toString(), Result.class);
-        } catch (IOException e) {
-            logger.warning("Errore getTicketsByStatus: " + e.getMessage());
-            return null;
-        }
+        String content = this.getJsonString(BPERSERVER + "/API/CC/Tickets?requestToken=" + TOKEN + "&filter=[{\"property\":\"TicketStatusID\",\"op\":\"eq\",\"value\":\"" + status + "\"}]", "getTicketsByStatus");
+        if (content.equals("")) return null;
+        Gson gson = new Gson();
+        tickets = gson.fromJson(content, Result.class);
         if (tickets == null) return null;
-        Ticket ticket_complete = null;
+        Ticket ticket_complete;
         Attachment attch_complete;
         ArrayList<Ticket> tickets_return = new ArrayList<>();
         for (Ticket t : tickets.results) {
@@ -164,6 +154,7 @@ public class BPERHelper {
         logger.info("Lettura ticket con status: " + status);
         ArrayList<Ticket> tickets = this.getTicketsByStatus(status);
         if (tickets == null) return;
+        if (tickets.size() < 1) return;
         int count = 0;
         for (Ticket t : tickets) {
             //scrittura su REM-OASI-Dispatcher-IN
@@ -203,14 +194,41 @@ public class BPERHelper {
             String Richiedente_Telefono = testo.substring(testo.lastIndexOf("Richiedente_Telefono") + "Richiedente_Telefono".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Telefono")));
             String Richiedente_Mail = testo.substring(testo.lastIndexOf("Richiedente_Mail") + "Richiedente_Mail".length() + 2, testo.indexOf("\n", testo.indexOf("Richiedente_Mail")));
             String Richiedente_Citta = testo.substring(testo.lastIndexOf("Richiedente_Citta") + "Richiedente_Citta".length() + 2);
-            entry.put(536870941, new Value(Categoria_Descrizione));
-            entry.put(536870957, new Value(Categoria_Hierarchy));
-            entry.put(536870947, new Value(Richiedente_Nominativo));
-            entry.put(536870964, new Value(Richiedente_FIL_UFF));
-            entry.put(536870930, new Value(Richiedente_Indirizzo));
-            entry.put(536870942, new Value(Richiedente_Telefono));
-            entry.put(536870943, new Value(Richiedente_Mail));
-            entry.put(536870988, new Value(Richiedente_Citta));
+            if (testo.contains("Categoria_Descrizione"))
+                entry.put(536870941, new Value(Categoria_Descrizione));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Categoria_Descrizione");
+            if (testo.contains("Categoria_Hierarchy"))
+                entry.put(536870957, new Value(Categoria_Hierarchy));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Categoria_Hierarchy");
+
+            if (testo.contains("Richiedente_Nominativo"))
+                entry.put(536870947, new Value(Richiedente_Nominativo));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_Nominativo");
+            if (testo.contains("Richiedente_FIL_UFF"))
+                entry.put(536870964, new Value(Richiedente_FIL_UFF));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_FIL_UFF");
+            if (testo.contains("Richiedente_Indirizzo"))
+                entry.put(536870930, new Value(Richiedente_Indirizzo));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_Indirizzo");
+            if (testo.contains("Richiedente_Telefono"))
+                entry.put(536870942, new Value(Richiedente_Telefono));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_Telefono");
+            if (testo.contains("Richiedente_Mail"))
+                entry.put(536870943, new Value(Richiedente_Mail));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_Mail");
+            if (testo.contains("Richiedente_Citta"))
+                entry.put(536870988, new Value(Richiedente_Citta));
+            else
+                logger.warning("Ticket= " + ticket.ID + ": write_REM_OASI_Dispatcher_IN: Manca Richiedente_Citta");
+
+
             entry.put(536870980, new Value("CREATE"));//campo azione che fa partire l'esito
 
             entryIdOut = context.createEntry(form, entry);//NON TOGLIERE QUESTO
@@ -226,10 +244,10 @@ public class BPERHelper {
         return true;
     }
 
-    private boolean write_REM_OASI_Attachment_IN(Ticket ticket) {
+    private void write_REM_OASI_Attachment_IN(Ticket ticket) {
         ArrayList<Attachment> attachments = ticket.Attachments;
-        if (attachments == null) return true;
-        if (attachments.size() < 1) return true;
+        if (attachments == null) return;
+        if (attachments.size() < 1) return;
         String entryIdOut = "";
         String form = "REM-OASI-Attachment-IN";
         int count_attch = 0;
@@ -248,82 +266,56 @@ public class BPERHelper {
         } catch (Exception e) {
             logger.warning("Ticket " + ticket.ID + ": write_REM_OASI_Attachment_IN " + e.getMessage() + ": entryIdOut=" + entryIdOut);
         }
-        return true;
     }
 
 
     public Ticket getTicketById(String id) {
-        try {
-            URL url = new URL(BPERSERVER + "/API/CC/Tickets/" + id + "?requestToken=" + TOKEN);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-            BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
-            String inputLine;
-            StringBuilder content = new StringBuilder();
-            while ((inputLine = br.readLine()) != null) {
-                content.append(inputLine);
-            }
-            br.close();
-            Gson gson = new Gson();
-            Ticket result = gson.fromJson(content.toString(), Ticket.class);
-            return result;
-        } catch (IOException e) {
-            logger.warning("Errore getTicketById: " + e.getMessage());
-            return null;
-        }
+        String content = this.getJsonString(BPERSERVER + "/API/CC/Tickets/" + id + "?requestToken=" + TOKEN, "getTicketById");
+        if (content.equals("")) return null;
+        Gson gson = new Gson();
+        return gson.fromJson(content, Ticket.class);
     }
 
     public void changeStatus(String ticketID, String TicketStatusID, String Comment, String Solution) {
+        Solution = Solution.replace("_newline_", "\n");
         try {
             URL url = new URL(BPERSERVER + "/API/CC/Tickets/" + ticketID + "/ChangeStatus?requestToken=" + TOKEN);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-            con.setRequestProperty("Content-Type", "application/json; utf-8");
+            HttpURLConnection con;
+            if (!PROXY_SERVER.equals("")) {
+                Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_SERVER, PROXY_PORT));
+                con = (HttpURLConnection) url.openConnection(proxy);
+            } else
+                con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("POST");
+            con.setRequestProperty("Content-Type", "application/json");
             con.setRequestProperty("Accept", "application/json");
             con.setDoOutput(true);
             String jsonInputString = "{\"TicketStatusID\": \"" + TicketStatusID + "\",\"Comment\":\"" + Comment + "\"," +
                     "\"Solution\": \"" + Solution + "\"}";
+            logger.info(jsonInputString);
 
-            try (OutputStream os = con.getOutputStream()) {
-                byte[] input = jsonInputString.getBytes("utf-8");
-                os.write(input, 0, input.length);
-                os.flush();
+            OutputStream os = con.getOutputStream();
+            byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
+            os.write(input, 0, input.length);
+//            os.flush();
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String responseLine;
+            while ((responseLine = br.readLine()) != null) {
+                response.append(responseLine.trim());
             }
-
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), "utf-8"))) {
-                StringBuilder response = new StringBuilder();
-                String responseLine = "";
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-                System.out.println(response.toString());
-                logger.info("Ticket " + ticketID + " cambio stato in " + TicketStatusID + ", response code: " + con.getResponseMessage() + response.toString());
-            }
-
+            logger.info("Ticket " + ticketID + " cambio stato in " + TicketStatusID + ", response code: " + con.getResponseMessage() + response.toString());
         } catch (IOException e) {
-            logger.warning("Errore changeStatus: " + e.getMessage());
+            logger.warning("Errore " + ticketID + " changeStatus: " + e.getMessage());
         }
     }
 
-    public Attachment getAttachmentByID(String id) {
-        try {
-            URL url = new URL(BPERSERVER + "/API/CC/Attachments/" + id + "?requestToken=" + TOKEN);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-            String inputLine;
-            StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
-            }
-            in.close();
-            Gson gson = new Gson();
-            Attachment result = gson.fromJson(content.toString(), Attachment.class);
-            return result;
-        } catch (IOException e) {
-            logger.warning("Errore getAttachmentsByID: " + e.getMessage());
-            return null;
-        }
+    private Attachment getAttachmentByID(String id) {
+        String content = this.getJsonString(BPERSERVER + "/API/CC/Attachments/" + id + "?requestToken=" + TOKEN, "getAttachmentByID");
+        if (content.equals("")) return null;
+        Gson gson = new Gson();
+        return gson.fromJson(content, Attachment.class);
     }
 
     public long StringToTimestamp(String s) {
@@ -337,7 +329,6 @@ public class BPERHelper {
             } catch (ParseException e) {
                 logger.warning("StringToTimestamp: " + s);
             }
-
             return cal.getTimeInMillis() / 1000;
         }
     }
@@ -392,13 +383,13 @@ public class BPERHelper {
     }
 
     public void endgame() {
-        logger.info("END");
         context.logout();
         try {
             inputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
+        logger.info("END");
     }
 
 }
